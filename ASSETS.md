@@ -1,7 +1,7 @@
 # Ikony i zasoby
 
 Folder `assets/fallback_items` zawiera oryginalne, zastępcze ikony przygotowane
-dla Jobs Generatora. Nie są to oficjalne tekstury Minecrafta ani tekstury
+dla Restriction Generatora. Nie są to oficjalne tekstury Minecrafta ani tekstury
 pochodzące z modów.
 
 Program może podczas działania odczytać prawdziwe ikony przedmiotów z lokalnych

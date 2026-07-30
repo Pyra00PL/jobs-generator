@@ -4,7 +4,7 @@ from core.models import RestrictionRow
 
 
 def save_profile(path: Path, rows: list[RestrictionRow]) -> None:
-    payload = {"format": 1, "rows": [row.to_dict() for row in rows]}
+    payload = {"format": 2, "rows": [row.to_dict() for row in rows]}
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 

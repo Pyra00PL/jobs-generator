@@ -1,4 +1,4 @@
-# Jobs Generator 0.14
+# Restriction Generator 1.0
 
 [Polska wersja](README_PL.md)
 
@@ -11,7 +11,8 @@ requirements.
 
 - Polish and English interface
 - Vanilla defaults and editable profiles
-- separate Smith crafting and job-based usage requirements
+- independent job and level requirements for usage, crafting, enchanting and
+  repairing
 - recipe scanning, including shaped, shapeless, smithing, tags and many custom
   result fields
 - material rules that can update hundreds of items at once
@@ -19,6 +20,10 @@ requirements.
 - original fallback icons when local game assets are unavailable
 - visual recipe preview
 - filtering, sorting, multi-selection and bulk removal
+- Enter-activated searches in both restriction and recipe lists
+- adding selected detected items as neutral rows for manual configuration
+- selecting all items visible under the current filter
+- selectable Minecraft compatibility profile in the Export tab
 - ZIP export ready for a world's `datapacks` directory
 
 Default Vanilla progression:
@@ -30,11 +35,12 @@ Default Vanilla progression:
 | Mace and trident | unchanged | Hunter 20 |
 
 Pickaxes use Miner, axes use Lumberjack, hoes use Farmer, while weapons and
-armor use Hunter. Every generated entry remains editable.
+armor use Hunter. Enchanting defaults to Enchanter and repairing defaults to
+Smith. Every generated entry remains editable.
 
 ## Windows release
 
-Download `JobsGenerator-0.14.0-Windows.exe` from the
+Download `RestrictionGenerator-1.0.0-Windows.exe` from the
 [Releases](../../releases) page. The executable is portable and does not
 require Python.
 
@@ -62,10 +68,10 @@ included PyInstaller specification:
 
 ```powershell
 python -m pip install -r requirements-build.txt
-pyinstaller --noconfirm JobsGenerator.spec
+pyinstaller --noconfirm RestrictionGenerator.spec
 ```
 
-The result is written to `dist/JobsGenerator.exe`.
+The result is written to `dist/RestrictionGenerator.exe`.
 
 ## Local assets and privacy
 

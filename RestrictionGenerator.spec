@@ -28,7 +28,7 @@ executable = EXE(
     analysis.binaries,
     analysis.datas,
     [],
-    name="JobsGenerator",
+    name="RestrictionGenerator",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -30,13 +30,13 @@ echo Instalowanie narzedzi budowania...
 python -m pip install --disable-pip-version-check -r requirements-build.txt
 if errorlevel 1 goto build_error
 
-echo Budowanie JobsGenerator.exe...
-python -m PyInstaller --noconfirm --clean JobsGenerator.spec
+echo Budowanie RestrictionGenerator.exe...
+python -m PyInstaller --noconfirm --clean RestrictionGenerator.spec
 if errorlevel 1 goto build_error
 
 echo.
 echo Gotowe:
-echo %CD%\dist\JobsGenerator.exe
+echo %CD%\dist\RestrictionGenerator.exe
 pause
 exit /b 0
 

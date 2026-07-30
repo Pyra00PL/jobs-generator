@@ -32,6 +32,11 @@ from core.builtin_icons import (
     builtin_item_ids,
     read_builtin_item_icons,
 )
+from core.compatibility import (
+    DEFAULT_PROFILE_KEY,
+    MINECRAFT_PROFILES,
+    get_profile,
+)
 from core.generator import generate_pack
 from core.icon_scanner import find_minecraft_client_jar, read_item_icons
 from core.i18n import translate
@@ -56,8 +61,82 @@ JOBS = ["none", "miner", "lumberjack", "farmer", "hunter", "smith", "digger", "b
 class NoScrollSpinBox(QSpinBox):
     """Pole liczbowe, którego wartości nie zmienia kółko myszy."""
 
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(36)
+        self.setStyleSheet(
+            """
+            QSpinBox {
+                padding-right: 30px;
+            }
+            QSpinBox::up-button,
+            QSpinBox::down-button {
+                subcontrol-origin: border;
+                width: 28px;
+                height: 17px;
+            }
+            QSpinBox::up-button {
+                subcontrol-position: top right;
+            }
+            QSpinBox::down-button {
+                subcontrol-position: bottom right;
+            }
+            """
+        )
+
     def wheelEvent(self, event) -> None:
         event.ignore()
+
+
+class NoScrollComboBox(QComboBox):
+    """Lista wyboru, której wartości nie zmienia kółko myszy."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
+class JobLevelEditor(QWidget):
+    """Wspólna komórka tabeli z wyborem profesji i poziomu."""
+
+    def __init__(
+        self,
+        translator,
+        job_id: str,
+        level: int,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.job_combo = NoScrollComboBox()
+        for available_job in JOBS:
+            self.job_combo.addItem(
+                translator(f"job_{available_job}"),
+                available_job,
+            )
+        normalized_job = (
+            "hunter"
+            if job_id == "warrior"
+            else job_id
+        )
+        selected_index = self.job_combo.findData(normalized_job)
+        self.job_combo.setCurrentIndex(max(0, selected_index))
+
+        self.level_spin = NoScrollSpinBox()
+        self.level_spin.setRange(0, 999)
+        self.level_spin.setValue(level)
+        self.level_spin.setFixedWidth(110)
+        self.job_combo.setMinimumWidth(120)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.addWidget(self.job_combo, 1)
+        layout.addWidget(self.level_spin)
+
+    def job_id(self) -> str:
+        return str(self.job_combo.currentData())
+
+    def level(self) -> int:
+        return self.level_spin.value()
 
 
 class MainWindow(QMainWindow):
@@ -71,9 +150,12 @@ class MainWindow(QMainWindow):
         self.item_icons: dict[str, bytes] = read_builtin_item_icons()
         self.item_tag_registry: dict[str, list[str]] = {}
         self.recipe_by_item: dict[str, CraftableItem] = {}
+        self.minecraft_profile_key = DEFAULT_PROFILE_KEY
         self.rows = vanilla_rows()
         self.material_rules = [MaterialRule(r.material, r.level, r.enabled) for r in DEFAULT_MATERIAL_RULES]
-        self.setWindowTitle("Jobs Generator v0.14")
+        self.applied_rules_filter = ""
+        self.applied_item_filter = ""
+        self.setWindowTitle("Restriction Generator v1.0")
         self.resize(1400, 820)
         self.setMinimumSize(1050, 650)
         self.build_ui()
@@ -83,16 +165,32 @@ class MainWindow(QMainWindow):
     def tr(self, key: str, **values) -> str:
         return translate(self.language, key, **values)
 
+    def refresh_subtitle(self) -> None:
+        profile = get_profile(self.minecraft_profile_key)
+        self.subtitle.setText(
+            f"Jobs+ / Item Restrictions • {profile.label}"
+        )
+
+    def on_minecraft_profile_changed(
+        self,
+        *_args,
+    ) -> None:
+        profile_key = self.minecraft_profile_combo.currentData()
+        if isinstance(profile_key, str):
+            self.minecraft_profile_key = profile_key
+            self.refresh_subtitle()
+
     def build_ui(self) -> None:
-        title = QLabel("Jobs Generator")
+        title = QLabel("Restriction Generator")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Jobs+ 9.0.0 + Item Restrictions 9.0.0 • Minecraft 1.21.1")
-        subtitle.setObjectName("mutedLabel")
+        self.subtitle = QLabel()
+        self.subtitle.setObjectName("mutedLabel")
+        self.refresh_subtitle()
 
         title_column = QVBoxLayout()
         title_column.setSpacing(2)
         title_column.addWidget(title)
-        title_column.addWidget(subtitle)
+        title_column.addWidget(self.subtitle)
         header = QHBoxLayout()
         header.addLayout(title_column)
         header.addStretch()
@@ -125,7 +223,9 @@ class MainWindow(QMainWindow):
         rules_descending = self.rules_sort_direction.currentData()
         detected_sort = self.detected_sort_combo.currentData()
         detected_descending = self.detected_sort_direction.currentData()
-        filter_text = self.item_filter.text()
+        rules_filter_text = self.rules_filter.text()
+        item_filter_text = self.item_filter.text()
+        checked_detected_ids = self.checked_detected_item_ids()
         export_path = self.export_path.text()
 
         previous_central = self.takeCentralWidget()
@@ -142,11 +242,12 @@ class MainWindow(QMainWindow):
             self.detected_sort_direction,
             detected_descending,
         )
-        self.item_filter.setText(filter_text)
+        self.rules_filter.setText(rules_filter_text)
+        self.item_filter.setText(item_filter_text)
         self.export_path.setText(export_path)
         self.refresh_rules_table()
         self.refresh_material_rules_table()
-        self.refresh_detected_items_table()
+        self.refresh_detected_items_table(checked_detected_ids)
         self.refresh_mods_table(checked_paths)
         self.tabs.setCurrentIndex(tab_index)
         self.statusBar().showMessage(self.tr("ready"))
@@ -173,6 +274,10 @@ class MainWindow(QMainWindow):
         for text, slot in (
             (self.tr("restore_vanilla"), self.reset_vanilla),
             (self.tr("add_item"), self.add_row),
+            (
+                self.tr("select_all_visible"),
+                self.select_all_visible_rules,
+            ),
             (self.tr("delete_selected"), self.delete_selected),
             (self.tr("save_profile"), self.save_profile_dialog),
             (self.tr("load_profile"), self.load_profile_dialog),
@@ -183,6 +288,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(buttons)
 
         sort_controls = QHBoxLayout()
+        sort_controls.addWidget(QLabel(self.tr("filter")))
+        self.rules_filter = QLineEdit()
+        self.rules_filter.setPlaceholderText(
+            self.tr("rules_filter_placeholder")
+        )
+        self.rules_filter.returnPressed.connect(
+            self.apply_rules_filter
+        )
+        sort_controls.addWidget(self.rules_filter)
         sort_controls.addWidget(QLabel(self.tr("sort_items")))
         self.rules_sort_combo = QComboBox()
         self.rules_sort_combo.addItem(self.tr("sort_alphabetical"), "item")
@@ -190,6 +304,14 @@ class MainWindow(QMainWindow):
         self.rules_sort_combo.addItem(self.tr("sort_job"), "job")
         self.rules_sort_combo.addItem(self.tr("sort_use_level"), "use_level")
         self.rules_sort_combo.addItem(self.tr("sort_smith_level"), "smith_level")
+        self.rules_sort_combo.addItem(
+            self.tr("sort_enchant_level"),
+            "enchant_level",
+        )
+        self.rules_sort_combo.addItem(
+            self.tr("sort_repair_level"),
+            "repair_level",
+        )
         self.rules_sort_combo.currentIndexChanged.connect(self.sort_rules)
         sort_controls.addWidget(self.rules_sort_combo)
         self.rules_sort_direction = QComboBox()
@@ -200,30 +322,35 @@ class MainWindow(QMainWindow):
         sort_controls.addStretch()
         layout.addLayout(sort_controls)
 
-        self.rules_table = QTableWidget(0, 8)
+        self.rules_table = QTableWidget(0, 9)
         self.rules_table.setHorizontalHeaderLabels([
             self.tr("select"),
             self.tr("enabled"),
             self.tr("item_id"),
-            self.tr("use_job"),
-            self.tr("use_level"),
-            self.tr("smith_crafting"),
+            self.tr("usage"),
+            self.tr("smithing"),
+            self.tr("enchanting"),
+            self.tr("repairing"),
             self.tr("use_types"),
             self.tr("description"),
         ])
         self.rules_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.rules_table.setIconSize(QSize(32, 32))
-        self.rules_table.verticalHeader().setDefaultSectionSize(38)
+        self.rules_table.verticalHeader().setDefaultSectionSize(42)
         self.rules_table.setColumnWidth(0, 60)
         self.rules_table.setColumnWidth(1, 60)
         self.rules_table.setColumnWidth(2, 280)
-        self.rules_table.setColumnWidth(3, 140)
-        self.rules_table.setColumnWidth(4, 110)
-        self.rules_table.setColumnWidth(5, 110)
-        self.rules_table.setColumnWidth(6, 330)
+        self.rules_table.setColumnWidth(3, 250)
+        self.rules_table.setColumnWidth(4, 250)
+        self.rules_table.setColumnWidth(5, 250)
+        self.rules_table.setColumnWidth(6, 250)
+        self.rules_table.setColumnWidth(7, 300)
         self.rules_table.horizontalHeader().setSectionResizeMode(
-            7,
+            8,
             QHeaderView.ResizeMode.Stretch,
+        )
+        self.rules_table.itemChanged.connect(
+            self.on_rule_table_item_changed
         )
         layout.addWidget(self.rules_table)
         return page
@@ -328,7 +455,7 @@ class MainWindow(QMainWindow):
         filters.addWidget(QLabel(self.tr("filter")))
         self.item_filter = QLineEdit()
         self.item_filter.setPlaceholderText(self.tr("filter_placeholder"))
-        self.item_filter.textChanged.connect(self.refresh_detected_items_table)
+        self.item_filter.returnPressed.connect(self.apply_item_filter)
         filters.addWidget(self.item_filter)
         filters.addWidget(QLabel(self.tr("sort")))
         self.detected_sort_combo = QComboBox()
@@ -337,20 +464,38 @@ class MainWindow(QMainWindow):
         self.detected_sort_combo.addItem(self.tr("sort_material"), "material")
         self.detected_sort_combo.addItem(self.tr("sort_category"), "category")
         self.detected_sort_combo.addItem(self.tr("sort_recipe"), "recipe")
-        self.detected_sort_combo.currentIndexChanged.connect(self.refresh_detected_items_table)
+        self.detected_sort_combo.currentIndexChanged.connect(
+            lambda: self.refresh_detected_items_table()
+        )
         filters.addWidget(self.detected_sort_combo)
         self.detected_sort_direction = QComboBox()
         self.detected_sort_direction.addItem(self.tr("ascending"), False)
         self.detected_sort_direction.addItem(self.tr("descending"), True)
-        self.detected_sort_direction.currentIndexChanged.connect(self.refresh_detected_items_table)
+        self.detected_sort_direction.currentIndexChanged.connect(
+            lambda: self.refresh_detected_items_table()
+        )
         filters.addWidget(self.detected_sort_direction)
         self.detected_summary = QLabel(self.tr("not_scanned"))
         filters.addWidget(self.detected_summary)
         layout.addLayout(filters)
 
         detected_buttons = QHBoxLayout()
+        add_detected = QPushButton(
+            self.tr("add_selected_to_restrictions")
+        )
+        add_detected.clicked.connect(
+            self.add_selected_detected_to_restrictions
+        )
+        select_detected = QPushButton(
+            self.tr("select_all_visible")
+        )
+        select_detected.clicked.connect(
+            self.select_all_visible_detected_items
+        )
         delete_detected = QPushButton(self.tr("delete_detected"))
         delete_detected.clicked.connect(self.delete_selected_detected_items)
+        detected_buttons.addWidget(add_detected)
+        detected_buttons.addWidget(select_detected)
         detected_buttons.addWidget(delete_detected)
         detected_buttons.addStretch()
         layout.addLayout(detected_buttons)
@@ -392,6 +537,27 @@ class MainWindow(QMainWindow):
         text = QLabel(self.tr("export_info"))
         text.setWordWrap(True)
         layout.addWidget(text)
+        version_row = QHBoxLayout()
+        version_row.addWidget(
+            QLabel(self.tr("minecraft_version"))
+        )
+        self.minecraft_profile_combo = NoScrollComboBox()
+        for profile in MINECRAFT_PROFILES:
+            self.minecraft_profile_combo.addItem(
+                profile.label,
+                profile.key,
+            )
+        self.minecraft_profile_combo.setCurrentIndex(
+            self.minecraft_profile_combo.findData(
+                self.minecraft_profile_key
+            )
+        )
+        self.minecraft_profile_combo.currentIndexChanged.connect(
+            self.on_minecraft_profile_changed
+        )
+        version_row.addWidget(self.minecraft_profile_combo)
+        version_row.addStretch()
+        layout.addLayout(version_row)
         self.export_path = QLabel(str(Path.cwd() / "output" / "JobsRestrictions.zip"))
         self.export_path.setWordWrap(True)
         layout.addWidget(self.export_path)
@@ -407,6 +573,7 @@ class MainWindow(QMainWindow):
         return page
 
     def refresh_rules_table(self) -> None:
+        previous = self.rules_table.blockSignals(True)
         self.rules_table.setRowCount(len(self.rows))
         for row_number, row in enumerate(self.rows):
             selected = QCheckBox()
@@ -419,27 +586,169 @@ class MainWindow(QMainWindow):
                 2,
                 self.make_item_id_cell(row.item_id),
             )
-            job = QComboBox()
-            for job_id in JOBS:
-                job.addItem(self.tr(f"job_{job_id}"), job_id)
-            selected_job = (
-                "hunter"
-                if row.use_job == "warrior"
-                else row.use_job
+
+            usage = JobLevelEditor(
+                self.tr,
+                row.use_job,
+                row.use_level,
             )
-            selected_index = job.findData(selected_job)
-            job.setCurrentIndex(max(0, selected_index))
-            self.rules_table.setCellWidget(row_number, 3, job)
-            use_level = NoScrollSpinBox()
-            use_level.setRange(0, 999)
-            use_level.setValue(row.use_level)
-            self.rules_table.setCellWidget(row_number, 4, use_level)
-            smith = NoScrollSpinBox()
-            smith.setRange(0, 999)
-            smith.setValue(row.smith_level)
-            self.rules_table.setCellWidget(row_number, 5, smith)
-            self.rules_table.setItem(row_number, 6, QTableWidgetItem(row.use_types))
-            self.rules_table.setItem(row_number, 7, QTableWidgetItem(self.describe(row)))
+            self.rules_table.setCellWidget(
+                row_number,
+                3,
+                usage,
+            )
+
+            smithing = JobLevelEditor(
+                self.tr,
+                row.smith_job,
+                row.smith_level,
+            )
+            self.rules_table.setCellWidget(
+                row_number,
+                4,
+                smithing,
+            )
+
+            enchant = JobLevelEditor(
+                self.tr,
+                row.enchant_job,
+                row.enchant_level,
+            )
+            self.rules_table.setCellWidget(
+                row_number,
+                5,
+                enchant,
+            )
+            repair = JobLevelEditor(
+                self.tr,
+                row.repair_job,
+                row.repair_level,
+            )
+            self.rules_table.setCellWidget(
+                row_number,
+                6,
+                repair,
+            )
+            self.rules_table.setItem(
+                row_number,
+                7,
+                QTableWidgetItem(row.use_types),
+            )
+            description_item = QTableWidgetItem(
+                self.describe(row)
+            )
+            description_item.setFlags(
+                description_item.flags()
+                & ~Qt.ItemFlag.ItemIsEditable
+            )
+            self.rules_table.setItem(
+                row_number,
+                8,
+                description_item,
+            )
+
+            for editor in (
+                usage,
+                smithing,
+                enchant,
+                repair,
+            ):
+                self.connect_rule_editor(
+                    row_number,
+                    editor,
+                )
+        self.rules_table.blockSignals(previous)
+        self.update_rules_filter_visibility()
+
+    def connect_rule_editor(
+        self,
+        row_number: int,
+        editor: JobLevelEditor,
+    ) -> None:
+        editor.job_combo.currentIndexChanged.connect(
+            lambda _index, row=row_number:
+            self.update_rule_description(row)
+        )
+        editor.level_spin.valueChanged.connect(
+            lambda _value, row=row_number:
+            self.update_rule_description(row)
+        )
+
+    def on_rule_table_item_changed(
+        self,
+        item: QTableWidgetItem,
+    ) -> None:
+        if item.column() == 7:
+            self.update_rule_description(item.row())
+
+    def update_rule_description(
+        self,
+        row_number: int,
+    ) -> None:
+        row = self.restriction_row_from_table(row_number)
+        if row is None:
+            return
+        description_item = self.rules_table.item(
+            row_number,
+            8,
+        )
+        if description_item is None:
+            description_item = QTableWidgetItem()
+            description_item.setFlags(
+                description_item.flags()
+                & ~Qt.ItemFlag.ItemIsEditable
+            )
+            self.rules_table.setItem(
+                row_number,
+                8,
+                description_item,
+            )
+        previous = self.rules_table.blockSignals(True)
+        description_item.setText(self.describe(row))
+        self.rules_table.blockSignals(previous)
+
+    def apply_rules_filter(self) -> None:
+        self.collect_rows()
+        self.applied_rules_filter = (
+            self.rules_filter.text().strip().lower()
+        )
+        self.update_rules_filter_visibility()
+
+    def update_rules_filter_visibility(self) -> None:
+        if not hasattr(self, "rules_table"):
+            return
+        query = self.applied_rules_filter
+        for row_number, row in enumerate(self.rows):
+            searchable = " ".join(
+                (
+                    row.item_id,
+                    row.use_job,
+                    row.smith_job,
+                    row.enchant_job,
+                    row.repair_job,
+                    row.use_types,
+                    self.describe(row),
+                )
+            ).lower()
+            self.rules_table.setRowHidden(
+                row_number,
+                bool(query and query not in searchable),
+            )
+
+    def select_all_visible_rules(self) -> None:
+        selected_count = 0
+        for row_number in range(self.rules_table.rowCount()):
+            checkbox = self.rules_table.cellWidget(row_number, 0)
+            visible = not self.rules_table.isRowHidden(row_number)
+            checkbox.setChecked(visible)
+            if visible:
+                selected_count += 1
+        self.statusBar().showMessage(
+            self.tr(
+                "visible_items_selected",
+                count=selected_count,
+            )
+        )
 
     def make_item_id_cell(self, item_id: str) -> QTableWidgetItem:
         cell = QTableWidgetItem(item_id)
@@ -718,22 +1027,77 @@ class MainWindow(QMainWindow):
     def collect_rows(self) -> list[RestrictionRow]:
         rows: list[RestrictionRow] = []
         for row_number in range(self.rules_table.rowCount()):
-            enabled_widget = self.rules_table.cellWidget(row_number, 1)
-            item_widget = self.rules_table.item(row_number, 2)
-            job_widget = self.rules_table.cellWidget(row_number, 3)
-            use_widget = self.rules_table.cellWidget(row_number, 4)
-            smith_widget = self.rules_table.cellWidget(row_number, 5)
-            types_item = self.rules_table.item(row_number, 6)
-            rows.append(RestrictionRow(
-                item_id=item_widget.text().strip() if item_widget else "",
-                use_job=str(job_widget.currentData()),
-                use_level=use_widget.value(),
-                smith_level=smith_widget.value(),
-                use_types=types_item.text().strip() if types_item else "",
-                enabled=enabled_widget.isChecked(),
-            ))
+            row = self.restriction_row_from_table(
+                row_number
+            )
+            if row is not None:
+                rows.append(row)
         self.rows = rows
         return rows
+
+    def restriction_row_from_table(
+        self,
+        row_number: int,
+    ) -> RestrictionRow | None:
+        enabled_widget = self.rules_table.cellWidget(
+            row_number,
+            1,
+        )
+        item_widget = self.rules_table.item(
+            row_number,
+            2,
+        )
+        usage_widget = self.rules_table.cellWidget(
+            row_number,
+            3,
+        )
+        smithing_widget = self.rules_table.cellWidget(
+            row_number,
+            4,
+        )
+        enchant_widget = self.rules_table.cellWidget(
+            row_number,
+            5,
+        )
+        repair_widget = self.rules_table.cellWidget(
+            row_number,
+            6,
+        )
+        types_item = self.rules_table.item(
+            row_number,
+            7,
+        )
+        if not all(
+            (
+                enabled_widget,
+                usage_widget,
+                smithing_widget,
+                enchant_widget,
+                repair_widget,
+            )
+        ):
+            return None
+        return RestrictionRow(
+            item_id=(
+                item_widget.text().strip()
+                if item_widget
+                else ""
+            ),
+            use_job=usage_widget.job_id(),
+            use_level=usage_widget.level(),
+            smith_level=smithing_widget.level(),
+            use_types=(
+                types_item.text().strip()
+                if types_item
+                else ""
+            ),
+            smith_job=smithing_widget.job_id(),
+            enchant_job=enchant_widget.job_id(),
+            enchant_level=enchant_widget.level(),
+            repair_job=repair_widget.job_id(),
+            repair_level=repair_widget.level(),
+            enabled=enabled_widget.isChecked(),
+        )
 
     def sort_rules(self, *_args) -> None:
         if not hasattr(self, "rules_table"):
@@ -753,6 +1117,10 @@ class MainWindow(QMainWindow):
                 return row.use_level, row.item_id.lower()
             if sort_mode == "smith_level":
                 return row.smith_level, row.item_id.lower()
+            if sort_mode == "enchant_level":
+                return row.enchant_level, row.item_id.lower()
+            if sort_mode == "repair_level":
+                return row.repair_level, row.item_id.lower()
             return row.item_id.lower(),
 
         self.rows = sorted(rows, key=sort_key, reverse=reverse)
@@ -760,9 +1128,18 @@ class MainWindow(QMainWindow):
 
     def describe(self, row: RestrictionRow) -> str:
         parts: list[str] = []
-        if row.smith_level:
+        if row.smith_job != "none" and row.smith_level:
+            smith_job = (
+                "hunter"
+                if row.smith_job == "warrior"
+                else row.smith_job
+            )
             parts.append(
-                self.tr("craft_description", level=row.smith_level)
+                self.tr(
+                    "craft_description",
+                    job=self.tr(f"job_{smith_job}"),
+                    level=row.smith_level,
+                )
             )
         if row.use_job != "none" and row.use_level:
             job_id = "hunter" if row.use_job == "warrior" else row.use_job
@@ -771,6 +1148,32 @@ class MainWindow(QMainWindow):
                     "use_description",
                     job=self.tr(f"job_{job_id}"),
                     level=row.use_level,
+                )
+            )
+        if row.enchant_job != "none" and row.enchant_level:
+            enchant_job = (
+                "hunter"
+                if row.enchant_job == "warrior"
+                else row.enchant_job
+            )
+            parts.append(
+                self.tr(
+                    "enchant_description",
+                    job=self.tr(f"job_{enchant_job}"),
+                    level=row.enchant_level,
+                )
+            )
+        if row.repair_job != "none" and row.repair_level:
+            repair_job = (
+                "hunter"
+                if row.repair_job == "warrior"
+                else row.repair_job
+            )
+            parts.append(
+                self.tr(
+                    "repair_description",
+                    job=self.tr(f"job_{repair_job}"),
+                    level=row.repair_level,
                 )
             )
         return " • ".join(parts)
@@ -782,7 +1185,19 @@ class MainWindow(QMainWindow):
 
     def add_row(self) -> None:
         self.collect_rows()
-        self.rows.append(RestrictionRow("modid:item_name", "hunter", 20, 20, "use_item,item_break_block,hurt_entity,repair,enchant"))
+        self.rows.append(
+            RestrictionRow(
+                "modid:item_name",
+                "hunter",
+                20,
+                20,
+                "use_item,item_break_block,hurt_entity",
+                enchant_job="enchanter",
+                enchant_level=20,
+                repair_job="smith",
+                repair_level=20,
+            )
+        )
         self.refresh_rules_table()
         self.rules_table.selectRow(len(self.rows) - 1)
 
@@ -1132,8 +1547,33 @@ class MainWindow(QMainWindow):
         if added:
             self.refresh_material_rules_table()
 
-    def refresh_detected_items_table(self, *_args) -> None:
-        filter_text = self.item_filter.text().strip().lower() if hasattr(self, "item_filter") else ""
+    def apply_item_filter(self) -> None:
+        self.applied_item_filter = (
+            self.item_filter.text().strip().lower()
+        )
+        self.refresh_detected_items_table()
+
+    def checked_detected_item_ids(self) -> set[str]:
+        if not hasattr(self, "detected_items_table"):
+            return set()
+        return {
+            str(
+                self.detected_items_table.cellWidget(
+                    row,
+                    0,
+                ).property("item_id")
+            )
+            for row in range(self.detected_items_table.rowCount())
+            if self.detected_items_table.cellWidget(row, 0).isChecked()
+        }
+
+    def refresh_detected_items_table(
+        self,
+        selected_ids: set[str] | None = None,
+    ) -> None:
+        if selected_ids is None:
+            selected_ids = self.checked_detected_item_ids()
+        filter_text = self.applied_item_filter
         visible = [item for item in self.detected_items if not filter_text or filter_text in " ".join((item.item_id, item.material, item.category, item.source_mod)).lower()]
         sort_mode = self.detected_sort_combo.currentData() if hasattr(self, "detected_sort_combo") else "item"
         reverse = bool(self.detected_sort_direction.currentData()) if hasattr(self, "detected_sort_direction") else False
@@ -1154,6 +1594,7 @@ class MainWindow(QMainWindow):
         for row_number, item in enumerate(visible):
             selected = QCheckBox()
             selected.setProperty("item_id", item.item_id)
+            selected.setChecked(item.item_id in selected_ids)
             self.detected_items_table.setCellWidget(row_number, 0, selected)
             self.detected_items_table.setItem(
                 row_number,
@@ -1191,11 +1632,7 @@ class MainWindow(QMainWindow):
         ))
 
     def delete_selected_detected_items(self) -> None:
-        selected_ids = {
-            str(self.detected_items_table.cellWidget(row, 0).property("item_id"))
-            for row in range(self.detected_items_table.rowCount())
-            if self.detected_items_table.cellWidget(row, 0).isChecked()
-        }
+        selected_ids = self.checked_detected_item_ids()
         if not selected_ids:
             QMessageBox.information(
                 self,
@@ -1213,6 +1650,72 @@ class MainWindow(QMainWindow):
             count=len(selected_ids),
         ))
 
+    def select_all_visible_detected_items(self) -> None:
+        selected_count = self.detected_items_table.rowCount()
+        for row_number in range(selected_count):
+            self.detected_items_table.cellWidget(
+                row_number,
+                0,
+            ).setChecked(True)
+        self.statusBar().showMessage(
+            self.tr(
+                "visible_items_selected",
+                count=selected_count,
+            )
+        )
+
+    def add_selected_detected_to_restrictions(self) -> None:
+        selected_ids = self.checked_detected_item_ids()
+        if not selected_ids:
+            QMessageBox.information(
+                self,
+                self.tr("no_selection"),
+                self.tr("select_detected_to_add"),
+            )
+            return
+        selected_items = [
+            item
+            for item in self.detected_items
+            if item.item_id in selected_ids
+        ]
+        existing_rows = self.collect_rows()
+        existing_ids = {
+            row.item_id.strip().lower()
+            for row in existing_rows
+        }
+        created = [
+            RestrictionRow(
+                item_id=item.item_id,
+                use_job="none",
+                use_level=0,
+                smith_level=0,
+                use_types="",
+                enabled=True,
+            )
+            for item in selected_items
+            if item.item_id.strip().lower() not in existing_ids
+        ]
+        if not created:
+            QMessageBox.information(
+                self,
+                self.tr("no_changes"),
+                self.tr("selected_items_already_exist"),
+            )
+            return
+        self.rows = existing_rows + created
+        self.applied_rules_filter = ""
+        self.rules_filter.clear()
+        self.refresh_rules_table()
+        self.tabs.setCurrentIndex(0)
+        QMessageBox.information(
+            self,
+            self.tr("items_added"),
+            self.tr("selected_items_added", count=len(created)),
+        )
+        self.statusBar().showMessage(
+            self.tr("selected_items_added", count=len(created))
+        )
+
     def apply_material_rules(self) -> None:
         if not self.detected_items:
             QMessageBox.information(
@@ -1221,9 +1724,19 @@ class MainWindow(QMainWindow):
                 self.tr("scan_before_materials"),
             )
             return
+        self.apply_material_rules_to_items(self.detected_items)
+
+    def apply_material_rules_to_items(
+        self,
+        items: list[CraftableItem],
+    ) -> None:
         existing_rows = self.collect_rows()
         existing_ids = {row.item_id.strip().lower() for row in existing_rows}
-        created, skipped = create_rows_from_material_rules(self.detected_items, self.collect_material_rules(), existing_ids)
+        created, skipped = create_rows_from_material_rules(
+            items,
+            self.collect_material_rules(),
+            existing_ids,
+        )
         if not created:
             QMessageBox.information(
                 self,
@@ -1266,6 +1779,7 @@ class MainWindow(QMainWindow):
                 self.collect_rows(),
                 Path(self.export_path.text()),
                 language=self.language,
+                profile=self.minecraft_profile_key,
             )
         except OSError as error:
             QMessageBox.critical(self, self.tr("save_error"), str(error))

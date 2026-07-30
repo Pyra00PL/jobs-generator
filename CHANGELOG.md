@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0
+
+- renamed the application to Restriction Generator
+- added an Enter-activated search field to the Restrictions tab
+- changed Materials and recipes filtering so it runs only after pressing Enter
+- added an action for inserting only selected detected items as neutral,
+  manually editable restriction rows
+- added **Select all visible** to the filtered Restrictions and detected-items
+  lists
+- disabled mouse-wheel changes in the Use job fields
+- enlarged and equalized the up/down arrow hitboxes in numeric fields
+- separated enchanting and repairing from the Use job restriction
+- added independent job and level editors for Enchanting (default Enchanter)
+  and Repairing (default Smith)
+- combined Usage and Smithing into consistent job/level editors
+- made the Smithing job configurable while keeping Smith as the default
+- widened every numeric level field and its composite table column
+- made the Description column update immediately after manual changes
+- restored the Minecraft version selector in the Export tab and version-aware
+  datapack metadata
+- added automatic migration of legacy profiles that stored `enchant` and
+  `repair` inside use restriction types
+
 ## 0.14.0
 
 - added 33 original fallback icons for common ingredients and Vanilla equipment

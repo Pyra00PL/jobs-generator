@@ -1,4 +1,4 @@
-# Jobs Generator 0.14
+# Restriction Generator 1.0
 
 [English version](README.md)
 
@@ -11,7 +11,8 @@ wymagania profesji i poziomów.
 
 - polski i angielski interfejs
 - domyślna konfiguracja Vanilla oraz zapisywane profile
-- osobne wymagania craftingu przez Smitha i używania przez wybraną profesję
+- niezależne profesje i poziomy dla używania, craftingu, enchantowania oraz
+  naprawy
 - odczyt receptur kształtowych, bezkształtowych, kowalskich, tagów i wielu
   niestandardowych pól wyniku
 - reguły materiałów pozwalające ustawić setki przedmiotów jednocześnie
@@ -20,6 +21,11 @@ wymagania profesji i poziomów.
 - własne ikony zastępcze, gdy lokalne zasoby są niedostępne
 - wizualny podgląd receptury
 - filtrowanie, sortowanie, zaznaczanie wielu pozycji i masowe usuwanie
+- wyszukiwanie zatwierdzane Enterem na listach restrykcji i receptur
+- dodawanie zaznaczonych przedmiotów jako neutralnych wpisów do ręcznej
+  konfiguracji
+- zaznaczanie wszystkich przedmiotów widocznych pod aktualnym filtrem
+- wybór zgodnej wersji Minecrafta w zakładce Eksport
 - eksport ZIP gotowy do folderu `datapacks` świata
 
 Domyślna progresja Vanilla:
@@ -31,11 +37,12 @@ Domyślna progresja Vanilla:
 | Maczuga i trójząb | bez zmian | Hunter 20 |
 
 Kilofy używają profesji Miner, siekiery Lumberjack, motyki Farmer, a broń
-i pancerz Hunter. Każdy wygenerowany wpis można zmienić.
+i pancerz Hunter. Enchantowanie domyślnie używa Enchantera, a naprawa Smitha.
+Każdy wygenerowany wpis można zmienić.
 
 ## Gotowa aplikacja Windows
 
-Pobierz `JobsGenerator-0.14.0-Windows.exe` ze strony
+Pobierz `RestrictionGenerator-1.0.0-Windows.exe` ze strony
 [Releases](../../releases). Program jest przenośny i nie wymaga Pythona.
 
 Windows może wyświetlić ostrzeżenie SmartScreen, ponieważ plik nie jest
@@ -63,10 +70,10 @@ dołączonego pliku PyInstaller:
 
 ```powershell
 python -m pip install -r requirements-build.txt
-pyinstaller --noconfirm JobsGenerator.spec
+pyinstaller --noconfirm RestrictionGenerator.spec
 ```
 
-Gotowy plik pojawi się jako `dist/JobsGenerator.exe`.
+Gotowy plik pojawi się jako `dist/RestrictionGenerator.exe`.
 
 ## Lokalne zasoby i prywatność
 

@@ -66,6 +66,10 @@ def create_rows_from_material_rules(
             use_level=level if job != "none" else 0,
             smith_level=level,
             use_types=use_types,
+            enchant_job="enchanter",
+            enchant_level=level,
+            repair_job="smith",
+            repair_level=level,
             enabled=True,
         ))
         existing_item_ids.add(item.item_id)
