@@ -1,0 +1,12 @@
+.venv/
+.build_venv/
+__pycache__/
+*.pyc
+*.log
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+build/
+dist/
+output/*.zip
