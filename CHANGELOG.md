@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1
+
+- merged restrictions that target the same item, job and level into one JSON
+  containing all matching restriction types
+- fixed manually added items so selecting Usage automatically supplies safe
+  use restriction types
+- added Iron Vanilla equipment with level 1 defaults
+- added Elytra with Hunter, Enchanter and Smith level 1 defaults
+
 ## 1.0.0
 
 - renamed the application to Restriction Generator

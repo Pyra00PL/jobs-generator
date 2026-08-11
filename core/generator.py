@@ -9,6 +9,7 @@ from core.compatibility import (
     MinecraftProfile,
     get_profile,
 )
+from core.defaults import USE_TOOL
 from core.models import RestrictionRow
 
 NAMESPACE = "jobsgenerator"
@@ -65,6 +66,40 @@ def restriction_json(item_id: str, job: str, level: int, types: list[str]) -> di
     }
 
 
+def normalized_job(job: str) -> str:
+    return JOB_ALIASES.get(job.strip().lower(), job.strip().lower())
+
+
+def add_restriction_types(
+    groups: dict[tuple[str, str, int], list[str]],
+    item_id: str,
+    job: str,
+    level: int,
+    types: list[str],
+) -> None:
+    normalized = normalized_job(job)
+    if normalized == "none" or level <= 0 or not types:
+        return
+    key = (item_id, normalized, level)
+    existing = groups.setdefault(key, [])
+    for restriction_type in types:
+        if restriction_type not in existing:
+            existing.append(restriction_type)
+
+
+def restriction_file_kind(types: list[str]) -> str:
+    kinds: list[str] = []
+    if "craft" in types:
+        kinds.append("craft")
+    if any(value in USE_RESTRICTION_TYPES for value in types):
+        kinds.append("use")
+    if "enchant" in types:
+        kinds.append("enchant")
+    if "repair" in types:
+        kinds.append("repair")
+    return kinds[0] if len(kinds) == 1 else "combined"
+
+
 def generate_pack(
     rows: list[RestrictionRow],
     destination_zip: Path,
@@ -86,8 +121,8 @@ def generate_pack(
         encoding="utf-8",
     )
     warnings: list[str] = []
-    count = 0
     seen: set[str] = set()
+    groups: dict[tuple[str, str, int], list[str]] = {}
     for row in rows:
         if not row.enabled:
             continue
@@ -113,20 +148,20 @@ def generate_pack(
             )
             continue
         seen.add(key)
-        if row.smith_job != "none" and row.smith_level > 0:
-            data = restriction_json(
-                item_id,
-                row.smith_job,
-                row.smith_level,
-                ["craft"],
-            )
-            path = restrictions_dir / (
-                f"{safe_name(item_id)}__craft_"
-                f"{row.smith_job}_{row.smith_level}.json"
-            )
-            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            count += 1
+        add_restriction_types(
+            groups,
+            item_id,
+            row.smith_job,
+            row.smith_level,
+            ["craft"],
+        )
         requested_types = [x.strip() for x in row.use_types.split(",") if x.strip()]
+        if (
+            row.use_job != "none"
+            and row.use_level > 0
+            and not requested_types
+        ):
+            requested_types = USE_TOOL.split(",")
         types = []
         for restriction_type in requested_types:
             if restriction_type not in SUPPORTED_RESTRICTION_TYPES:
@@ -149,47 +184,44 @@ def generate_pack(
                 continue
             if restriction_type not in types:
                 types.append(restriction_type)
-        if row.use_job in {"warrior", "hunter"} and "hurt_entity" in types:
+        if normalized_job(row.use_job) == "hunter" and "hurt_entity" in types:
             # Broń ma być bezużyteczna także do niszczenia bloków.
             if "item_break_block" not in types:
                 types.append("item_break_block")
-        if row.use_job != "none" and row.use_level > 0 and types:
-            data = restriction_json(item_id, row.use_job, row.use_level, types)
-            path = restrictions_dir / f"{safe_name(item_id)}__use_{row.use_job}_{row.use_level}.json"
-            path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            count += 1
-        if row.enchant_job != "none" and row.enchant_level > 0:
-            data = restriction_json(
-                item_id,
-                row.enchant_job,
-                row.enchant_level,
-                ["enchant"],
-            )
-            path = restrictions_dir / (
-                f"{safe_name(item_id)}__enchant_"
-                f"{row.enchant_job}_{row.enchant_level}.json"
-            )
-            path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            count += 1
-        if row.repair_job != "none" and row.repair_level > 0:
-            data = restriction_json(
-                item_id,
-                row.repair_job,
-                row.repair_level,
-                ["repair"],
-            )
-            path = restrictions_dir / (
-                f"{safe_name(item_id)}__repair_"
-                f"{row.repair_job}_{row.repair_level}.json"
-            )
-            path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            count += 1
+        add_restriction_types(
+            groups,
+            item_id,
+            row.use_job,
+            row.use_level,
+            types,
+        )
+        add_restriction_types(
+            groups,
+            item_id,
+            row.enchant_job,
+            row.enchant_level,
+            ["enchant"],
+        )
+        add_restriction_types(
+            groups,
+            item_id,
+            row.repair_job,
+            row.repair_level,
+            ["repair"],
+        )
+
+    for (item_id, job, level), types in groups.items():
+        data = restriction_json(item_id, job, level, types)
+        kind = restriction_file_kind(types)
+        path = restrictions_dir / (
+            f"{safe_name(item_id)}__{kind}_{job}_{level}.json"
+        )
+        path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    count = len(groups)
     destination_zip.parent.mkdir(parents=True, exist_ok=True)
     if destination_zip.exists():
         destination_zip.unlink()

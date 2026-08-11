@@ -125,6 +125,97 @@ class RestrictionSeparationTests(unittest.TestCase):
 
         self.assertEqual(data["types"], ["use_item"])
 
+    def test_same_job_and_level_are_exported_as_one_restriction(self) -> None:
+        row = RestrictionRow(
+            item_id="example:steel_hammer",
+            use_job="none",
+            use_level=0,
+            smith_job="smith",
+            smith_level=20,
+            use_types="",
+            enchant_job="none",
+            enchant_level=0,
+            repair_job="smith",
+            repair_level=20,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "restrictions.zip"
+            count, warnings = generate_pack([row], output)
+            self.assertEqual(count, 1)
+            self.assertEqual(warnings, [])
+            with zipfile.ZipFile(output) as archive:
+                json_entries = [
+                    name
+                    for name in archive.namelist()
+                    if name.endswith(".json")
+                ]
+                self.assertEqual(len(json_entries), 1)
+                self.assertTrue(
+                    json_entries[0].endswith(
+                        "__combined_smith_20.json"
+                    )
+                )
+                data = json.loads(archive.read(json_entries[0]))
+
+        self.assertEqual(data["types"], ["craft", "repair"])
+        self.assertEqual(
+            data["conditions"][0]["job"],
+            "jobsplus:smith",
+        )
+
+    def test_same_job_with_different_levels_stays_separate(self) -> None:
+        row = RestrictionRow(
+            item_id="example:steel_hammer",
+            use_job="none",
+            use_level=0,
+            smith_job="smith",
+            smith_level=20,
+            use_types="",
+            enchant_job="none",
+            enchant_level=0,
+            repair_job="smith",
+            repair_level=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "restrictions.zip"
+            count, warnings = generate_pack([row], output)
+
+        self.assertEqual(count, 2)
+        self.assertEqual(warnings, [])
+
+    def test_empty_manual_usage_types_receive_safe_defaults(self) -> None:
+        row = RestrictionRow(
+            item_id="example:custom_lance",
+            use_job="hunter",
+            use_level=15,
+            smith_level=0,
+            use_types="",
+            enchant_job="none",
+            enchant_level=0,
+            repair_job="none",
+            repair_level=0,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "restrictions.zip"
+            count, warnings = generate_pack([row], output)
+            with zipfile.ZipFile(output) as archive:
+                entry_name = next(
+                    name
+                    for name in archive.namelist()
+                    if name.endswith(".json")
+                )
+                data = json.loads(archive.read(entry_name))
+
+        self.assertEqual(count, 1)
+        self.assertEqual(warnings, [])
+        self.assertEqual(
+            data["types"],
+            ["use_item", "item_break_block", "hurt_entity"],
+        )
+
     @staticmethod
     def find_entry(entries: dict[str, dict], suffix: str) -> dict:
         return next(

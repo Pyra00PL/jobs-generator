@@ -1,4 +1,4 @@
-# Restriction Generator 1.0
+# Restriction Generator 1.0.1
 
 [Polska wersja](README_PL.md)
 
@@ -13,6 +13,8 @@ requirements.
 - Vanilla defaults and editable profiles
 - independent job and level requirements for usage, crafting, enchanting and
   repairing
+- compatible requirements with the same item, job and level are merged into a
+  single generated restriction
 - recipe scanning, including shaped, shapeless, smithing, tags and many custom
   result fields
 - material rules that can update hundreds of items at once
@@ -30,8 +32,10 @@ Default Vanilla progression:
 
 | Equipment | Crafting | Usage |
 | --- | --- | --- |
+| Iron | Smith 1 | relevant job 1 |
 | Diamond | Smith 20 | relevant job 20 |
 | Netherite | Smith 40 | relevant job 40 |
+| Elytra | unchanged | Hunter 1 |
 | Mace and trident | unchanged | Hunter 20 |
 
 Pickaxes use Miner, axes use Lumberjack, hoes use Farmer, while weapons and
@@ -40,7 +44,7 @@ Smith. Every generated entry remains editable.
 
 ## Windows release
 
-Download `RestrictionGenerator-1.0.0-Windows.exe` from the
+Download `RestrictionGenerator-1.0.1-Windows.exe` from the
 [Releases](../../releases) page. The executable is portable and does not
 require Python.
 

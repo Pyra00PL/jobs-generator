@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.defaults import vanilla_rows
+from core.defaults import USE_TOOL, vanilla_rows
 from core.builtin_icons import (
     builtin_icon_id_for_tag,
     builtin_item_ids,
@@ -40,7 +40,12 @@ from core.compatibility import (
 from core.generator import generate_pack
 from core.icon_scanner import find_minecraft_client_jar, read_item_icons
 from core.i18n import translate
-from core.materials import DEFAULT_MATERIAL_RULES, MaterialRule, create_rows_from_material_rules
+from core.materials import (
+    DEFAULT_MATERIAL_RULES,
+    MaterialRule,
+    create_rows_from_material_rules,
+    job_and_types,
+)
 from core.models import RestrictionRow
 from core.profile import load_profile, save_profile
 from core.recipe_scanner import (
@@ -155,7 +160,7 @@ class MainWindow(QMainWindow):
         self.material_rules = [MaterialRule(r.material, r.level, r.enabled) for r in DEFAULT_MATERIAL_RULES]
         self.applied_rules_filter = ""
         self.applied_item_filter = ""
-        self.setWindowTitle("Restriction Generator v1.0")
+        self.setWindowTitle("Restriction Generator v1.0.1")
         self.resize(1400, 820)
         self.setMinimumSize(1050, 650)
         self.build_ui()
@@ -688,6 +693,17 @@ class MainWindow(QMainWindow):
         row = self.restriction_row_from_table(row_number)
         if row is None:
             return
+        types_item = self.rules_table.item(row_number, 7)
+        if (
+            types_item is not None
+            and not types_item.text().strip()
+            and row.use_job != "none"
+            and row.use_level > 0
+        ):
+            previous = self.rules_table.blockSignals(True)
+            types_item.setText(USE_TOOL)
+            self.rules_table.blockSignals(previous)
+            row.use_types = USE_TOOL
         description_item = self.rules_table.item(
             row_number,
             8,
@@ -1689,7 +1705,10 @@ class MainWindow(QMainWindow):
                 use_job="none",
                 use_level=0,
                 smith_level=0,
-                use_types="",
+                use_types=(
+                    job_and_types(item.category)[1]
+                    or USE_TOOL
+                ),
                 enabled=True,
             )
             for item in selected_items

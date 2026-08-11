@@ -1,4 +1,4 @@
-# Restriction Generator 1.0
+# Restriction Generator 1.0.1
 
 [English version](README.md)
 
@@ -13,6 +13,8 @@ wymagania profesji i poziomów.
 - domyślna konfiguracja Vanilla oraz zapisywane profile
 - niezależne profesje i poziomy dla używania, craftingu, enchantowania oraz
   naprawy
+- zgodne wymagania dotyczące tego samego przedmiotu, profesji i poziomu są
+  łączone w jedną generowaną restrykcję
 - odczyt receptur kształtowych, bezkształtowych, kowalskich, tagów i wielu
   niestandardowych pól wyniku
 - reguły materiałów pozwalające ustawić setki przedmiotów jednocześnie
@@ -32,8 +34,10 @@ Domyślna progresja Vanilla:
 
 | Wyposażenie | Crafting | Używanie |
 | --- | --- | --- |
+| Żelazne | Smith 1 | odpowiednia profesja 1 |
 | Diamentowe | Smith 20 | odpowiednia profesja 20 |
 | Netheritowe | Smith 40 | odpowiednia profesja 40 |
+| Elytra | bez zmian | Hunter 1 |
 | Maczuga i trójząb | bez zmian | Hunter 20 |
 
 Kilofy używają profesji Miner, siekiery Lumberjack, motyki Farmer, a broń
@@ -42,7 +46,7 @@ Każdy wygenerowany wpis można zmienić.
 
 ## Gotowa aplikacja Windows
 
-Pobierz `RestrictionGenerator-1.0.0-Windows.exe` ze strony
+Pobierz `RestrictionGenerator-1.0.1-Windows.exe` ze strony
 [Releases](../../releases). Program jest przenośny i nie wymaga Pythona.
 
 Windows może wyświetlić ostrzeżenie SmartScreen, ponieważ plik nie jest

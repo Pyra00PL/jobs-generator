@@ -6,6 +6,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionSpinBox
 
+from core.defaults import USE_TOOL, USE_WEAPON
+from core.models import RestrictionRow
 from core.recipe_scanner import CraftableItem
 from ui.main_window import MainWindow, NoScrollComboBox, NoScrollSpinBox
 
@@ -34,7 +36,7 @@ class RestrictionGeneratorUiTests(unittest.TestCase):
     def test_application_uses_new_name_and_version(self) -> None:
         self.assertEqual(
             self.window.windowTitle(),
-            "Restriction Generator v1.0",
+            "Restriction Generator v1.0.1",
         )
         self.assertEqual(
             self.window.minecraft_profile_combo.currentData(),
@@ -129,7 +131,7 @@ class RestrictionGeneratorUiTests(unittest.TestCase):
         self.assertEqual(created.use_level, 0)
         self.assertEqual(created.smith_job, "smith")
         self.assertEqual(created.smith_level, 0)
-        self.assertEqual(created.use_types, "")
+        self.assertEqual(created.use_types, USE_WEAPON)
         self.assertEqual(created.enchant_job, "enchanter")
         self.assertEqual(created.enchant_level, 0)
         self.assertEqual(created.repair_job, "smith")
@@ -144,13 +146,13 @@ class RestrictionGeneratorUiTests(unittest.TestCase):
         repair = self.window.rules_table.cellWidget(0, 6)
 
         self.assertEqual(usage.job_id(), "miner")
-        self.assertEqual(usage.level(), 20)
+        self.assertEqual(usage.level(), 1)
         self.assertEqual(smithing.job_id(), "smith")
-        self.assertEqual(smithing.level(), 20)
+        self.assertEqual(smithing.level(), 1)
         self.assertEqual(enchant.job_id(), "enchanter")
-        self.assertEqual(enchant.level(), 20)
+        self.assertEqual(enchant.level(), 1)
         self.assertEqual(repair.job_id(), "smith")
-        self.assertEqual(repair.level(), 20)
+        self.assertEqual(repair.level(), 1)
         self.assertNotIn(
             "enchant",
             self.window.rules_table.item(0, 7).text().split(","),
@@ -211,6 +213,38 @@ class RestrictionGeneratorUiTests(unittest.TestCase):
         ).text()
         self.assertIn("alchemik 77", description)
         self.assertIn("budowniczy 66", description)
+
+    def test_manual_usage_fills_missing_use_types(self) -> None:
+        self.window.rows = [
+            RestrictionRow(
+                item_id="example:custom_lance",
+                use_job="none",
+                use_level=0,
+                smith_level=0,
+                use_types="",
+                enchant_job="none",
+                enchant_level=0,
+                repair_job="none",
+                repair_level=0,
+            )
+        ]
+        self.window.refresh_rules_table()
+        usage = self.window.rules_table.cellWidget(0, 3)
+
+        usage.job_combo.setCurrentIndex(
+            usage.job_combo.findData("hunter")
+        )
+        usage.level_spin.setValue(12)
+        self.app.processEvents()
+
+        self.assertEqual(
+            self.window.rules_table.item(0, 7).text(),
+            USE_TOOL,
+        )
+        self.assertEqual(
+            self.window.collect_rows()[0].use_types,
+            USE_TOOL,
+        )
 
     def test_composite_level_fields_are_wide_enough(
         self,
