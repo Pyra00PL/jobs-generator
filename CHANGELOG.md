@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.2
+
+- added an enabled-by-default scanner option for weapons and armor without
+  crafting recipes, such as boss loot
+- detects non-craftable equipment from item definitions, models, language
+  entries, item tags and loot tables
+- marks these items as having no recipe and disables their recipe-preview
+  button
+- material rules no longer create a Smithing restriction for an item without
+  a crafting recipe
+- avoids common model variants and foreign Vanilla tag entries during fallback
+  scanning
+
 ## 1.0.1
 
 - merged restrictions that target the same item, job and level into one JSON

@@ -19,6 +19,10 @@ class CraftableItem:
     material_source: str
     recipe_data: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def has_recipe(self) -> bool:
+        return bool(self.recipe_path)
+
 
 CATEGORY_RULES: tuple[tuple[str, str], ...] = (
     ("weapons", "weapon"),
@@ -143,6 +147,216 @@ def scan_jar_recipes(jar_file: Path) -> list[CraftableItem]:
     except (OSError, zipfile.BadZipFile):
         return []
     return found
+
+
+def scan_jar_equipment_without_recipes(
+    jar_file: Path,
+    recipe_item_ids: set[str] | None = None,
+) -> list[CraftableItem]:
+    """Finds weapons and armor exposed by item models or item tags.
+
+    Some equipment is obtained as boss loot and therefore has no recipe JSON.
+    Item model paths provide a conservative list of possible registered items;
+    item tags additionally recognize equipment whose ID has a custom name.
+    """
+
+    recipe_ids = {
+        item_id.strip().lower()
+        for item_id in (recipe_item_ids or set())
+    }
+    found: list[CraftableItem] = []
+    try:
+        with zipfile.ZipFile(jar_file) as archive:
+            tagged_categories = read_tagged_categories(archive)
+            item_definition_candidates: set[str] = set()
+            model_candidates: set[str] = set()
+            model_pattern = re.compile(
+                r"^assets/([^/]+)/models/item/(.+)\.json$",
+                re.IGNORECASE,
+            )
+            item_definition_pattern = re.compile(
+                r"^assets/([^/]+)/items/(.+)\.json$",
+                re.IGNORECASE,
+            )
+            for entry_name in archive.namelist():
+                normalized_path = entry_name.replace("\\", "/")
+                match = model_pattern.match(normalized_path)
+                if match is not None:
+                    item_id = normalize_item_id(
+                        f"{match.group(1)}:{match.group(2)}"
+                    )
+                    if item_id:
+                        model_candidates.add(item_id)
+                    continue
+                match = item_definition_pattern.match(normalized_path)
+                if match is not None:
+                    item_id = normalize_item_id(
+                        f"{match.group(1)}:{match.group(2)}"
+                    )
+                    if item_id:
+                        item_definition_candidates.add(item_id)
+
+            language_candidates = read_item_ids_from_languages(archive)
+            loot_candidates = read_item_ids_from_loot_tables(archive)
+            owned_namespaces = {
+                item_id.split(":", 1)[0]
+                for item_id in (
+                    model_candidates
+                    | item_definition_candidates
+                    | language_candidates
+                )
+            }
+            candidates = (
+                set(tagged_categories)
+                | loot_candidates
+                | item_definition_candidates
+                | (model_candidates & language_candidates)
+            )
+            if not language_candidates:
+                candidates.update(
+                    item_id
+                    for item_id in model_candidates
+                    if is_likely_primary_item_model(item_id)
+                )
+
+            for item_id in sorted(candidates):
+                if item_id in recipe_ids:
+                    continue
+                if item_id.startswith("minecraft:"):
+                    continue
+                item_namespace = item_id.split(":", 1)[0]
+                if (
+                    owned_namespaces
+                    and item_namespace not in owned_namespaces
+                ):
+                    continue
+                category = tagged_categories.get(
+                    item_id,
+                    detect_category(item_id),
+                )
+                if category not in {"weapon", "sword", "armor"}:
+                    continue
+                material, confidence, source = detect_material(
+                    item_id,
+                    [],
+                )
+                found.append(CraftableItem(
+                    item_id=item_id,
+                    material=material,
+                    category=category,
+                    source_mod=item_id.split(":", 1)[0],
+                    recipe_path="",
+                    confidence=confidence,
+                    material_source=source,
+                    recipe_data={},
+                ))
+    except (OSError, zipfile.BadZipFile):
+        return []
+    return found
+
+
+def is_likely_primary_item_model(item_id: str) -> bool:
+    """Rejects common model variants when a mod has no language registry."""
+
+    path = item_id.split(":", 1)[-1]
+    if "/" in path:
+        return False
+    variant_tokens = (
+        "_3d",
+        "_icon",
+        "_broken",
+        "_charged",
+        "_open",
+        "_pulling",
+        "_blocking",
+        "_trim",
+    )
+    return not any(token in path for token in variant_tokens)
+
+
+def read_item_ids_from_languages(
+    archive: zipfile.ZipFile,
+) -> set[str]:
+    """Reads registered-looking item IDs from Minecraft language keys."""
+
+    item_ids: set[str] = set()
+    language_pattern = re.compile(
+        r"^assets/([^/]+)/lang/(?:en_us|en_gb)\.json$",
+        re.IGNORECASE,
+    )
+    for entry_name in archive.namelist():
+        normalized_path = entry_name.replace("\\", "/")
+        language_match = language_pattern.match(normalized_path)
+        if language_match is None:
+            continue
+        asset_namespace = language_match.group(1).lower()
+        item_prefix = f"item.{asset_namespace}."
+        try:
+            payload = json.loads(
+                archive.read(entry_name).decode("utf-8-sig")
+            )
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for translation_key in payload:
+            if not isinstance(translation_key, str):
+                continue
+            normalized_key = translation_key.lower()
+            if not normalized_key.startswith(item_prefix):
+                continue
+            item_id = normalize_item_id(
+                f"{asset_namespace}:{normalized_key[len(item_prefix):]}"
+            )
+            if item_id:
+                item_ids.add(item_id)
+    return item_ids
+
+
+def read_item_ids_from_loot_tables(
+    archive: zipfile.ZipFile,
+) -> set[str]:
+    """Finds concrete item entries used by loot tables, including boss loot."""
+
+    item_ids: set[str] = set()
+    loot_pattern = re.compile(
+        r"^data/[^/]+/loot_tables?/.+\.json$",
+        re.IGNORECASE,
+    )
+    for entry_name in archive.namelist():
+        normalized_path = entry_name.replace("\\", "/")
+        if loot_pattern.match(normalized_path) is None:
+            continue
+        try:
+            payload = json.loads(
+                archive.read(entry_name).decode("utf-8-sig")
+            )
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        collect_loot_item_ids(payload, item_ids)
+    return item_ids
+
+
+def collect_loot_item_ids(value: Any, output: set[str]) -> None:
+    if isinstance(value, list):
+        for element in value:
+            collect_loot_item_ids(element, output)
+        return
+    if not isinstance(value, dict):
+        return
+
+    entry_type = value.get("type")
+    item_name = value.get("name")
+    if (
+        entry_type in {"item", "minecraft:item"}
+        and isinstance(item_name, str)
+    ):
+        normalized = normalize_item_id(item_name)
+        if normalized:
+            output.add(normalized)
+
+    for nested in value.values():
+        collect_loot_item_ids(nested, output)
 
 
 def read_tagged_categories(archive: zipfile.ZipFile) -> dict[str, str]:
@@ -510,10 +724,11 @@ def tokenize(value: str) -> list[str]:
     return [token for token in re.split(r"[/_.-]+", value.lower()) if token]
 
 
-def item_quality(item: CraftableItem) -> tuple[int, int]:
+def item_quality(item: CraftableItem) -> tuple[int, int, int]:
     """Preferuje wpis z rozpoznaną kategorią i pewniejszym materiałem."""
 
     return (
+        1 if item.has_recipe else 0,
         1 if item.category != "other" else 0,
         confidence_rank(item.confidence),
     )

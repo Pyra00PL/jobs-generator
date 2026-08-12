@@ -22,7 +22,7 @@ QStatusBar { background-color: #18191c; color: #d1d5db; }
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Restriction Generator")
-    app.setApplicationVersion("1.0.1")
+    app.setApplicationVersion("1.0.2")
     app.setStyleSheet(APP_STYLE)
     window = MainWindow()
     window.show()

@@ -1,4 +1,4 @@
-# Restriction Generator 1.0.1
+# Restriction Generator 1.0.2
 
 [English version](README.md)
 
@@ -17,6 +17,9 @@ wymagania profesji i poziomów.
   łączone w jedną generowaną restrykcję
 - odczyt receptur kształtowych, bezkształtowych, kowalskich, tagów i wielu
   niestandardowych pól wyniku
+- opcjonalne wykrywanie broni i pancerzy bez receptur, w tym łupów z bossów,
+  na podstawie modeli, tagów, nazw i tabel łupów
+- przedmioty bez receptur nie otrzymują automatycznego wymagania Smithingu
 - reguły materiałów pozwalające ustawić setki przedmiotów jednocześnie
 - ikony przedmiotów i składników odczytywane z lokalnych plików Minecrafta
   i modów
@@ -46,7 +49,7 @@ Każdy wygenerowany wpis można zmienić.
 
 ## Gotowa aplikacja Windows
 
-Pobierz `RestrictionGenerator-1.0.1-Windows.exe` ze strony
+Pobierz `RestrictionGenerator-1.0.2-Windows.exe` ze strony
 [Releases](../../releases). Program jest przenośny i nie wymaga Pythona.
 
 Windows może wyświetlić ostrzeżenie SmartScreen, ponieważ plik nie jest

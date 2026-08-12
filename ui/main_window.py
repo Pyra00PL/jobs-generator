@@ -56,6 +56,7 @@ from core.recipe_scanner import (
     merge_craftable_items,
     read_item_tag_registry,
     resolve_item_tag,
+    scan_jar_equipment_without_recipes,
     scan_jar_recipes,
 )
 from core.scanner import ModFile, scan_mods_folder
@@ -155,12 +156,13 @@ class MainWindow(QMainWindow):
         self.item_icons: dict[str, bytes] = read_builtin_item_icons()
         self.item_tag_registry: dict[str, list[str]] = {}
         self.recipe_by_item: dict[str, CraftableItem] = {}
+        self.include_non_craftable_equipment = True
         self.minecraft_profile_key = DEFAULT_PROFILE_KEY
         self.rows = vanilla_rows()
         self.material_rules = [MaterialRule(r.material, r.level, r.enabled) for r in DEFAULT_MATERIAL_RULES]
         self.applied_rules_filter = ""
         self.applied_item_filter = ""
-        self.setWindowTitle("Restriction Generator v1.0.1")
+        self.setWindowTitle("Restriction Generator v1.0.2")
         self.resize(1400, 820)
         self.setMinimumSize(1050, 650)
         self.build_ui()
@@ -382,6 +384,16 @@ class MainWindow(QMainWindow):
         buttons.addWidget(scan)
         buttons.addWidget(self.load_mods_button)
 
+        self.non_craftable_equipment_checkbox = QCheckBox(
+            self.tr("include_non_craftable_equipment")
+        )
+        self.non_craftable_equipment_checkbox.setChecked(
+            self.include_non_craftable_equipment
+        )
+        self.non_craftable_equipment_checkbox.toggled.connect(
+            self.set_include_non_craftable_equipment
+        )
+
         selection_buttons = QHBoxLayout()
         select_all = QPushButton(self.tr("select_all"))
         select_all.clicked.connect(lambda: self.set_all_mod_checkboxes(True))
@@ -414,6 +426,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.folder_label)
         layout.addLayout(buttons)
+        layout.addWidget(self.non_craftable_equipment_checkbox)
         layout.addLayout(selection_buttons)
         layout.addWidget(self.mods_table)
         note = QLabel(self.tr("scanner_note"))
@@ -780,7 +793,7 @@ class MainWindow(QMainWindow):
     def show_recipe_dialog(self, item_id: str) -> None:
         normalized_id = item_id.strip().lower()
         recipe = self.recipe_by_item.get(normalized_id)
-        if recipe is None:
+        if recipe is None or not recipe.has_recipe:
             QMessageBox.information(
                 self,
                 self.tr("crafting"),
@@ -1314,7 +1327,14 @@ class MainWindow(QMainWindow):
         self.detected_mods = []
         self.mod_item_cache.clear()
         for mod in all_mods:
-            items = merge_craftable_items(scan_jar_recipes(mod.file_path))
+            recipes = scan_jar_recipes(mod.file_path)
+            items = list(recipes)
+            if self.include_non_craftable_equipment:
+                items.extend(scan_jar_equipment_without_recipes(
+                    mod.file_path,
+                    {item.item_id for item in recipes},
+                ))
+            items = merge_craftable_items(items)
             if not items:
                 continue
             self.detected_mods.append(mod)
@@ -1342,6 +1362,12 @@ class MainWindow(QMainWindow):
                 hidden=hidden_count,
             ),
         )
+
+    def set_include_non_craftable_equipment(
+        self,
+        checked: bool,
+    ) -> None:
+        self.include_non_craftable_equipment = checked
 
     def refresh_mods_table(
         self,
@@ -1623,7 +1649,11 @@ class MainWindow(QMainWindow):
                 item.source_mod,
                 self.translated_confidence(item.confidence),
                 self.translated_material_source(item.material_source),
-                item.recipe_path,
+                (
+                    item.recipe_path
+                    if item.has_recipe
+                    else self.tr("no_recipe")
+                ),
             )
             for column, value in enumerate(values, start=2):
                 self.detected_items_table.setItem(
@@ -1632,6 +1662,7 @@ class MainWindow(QMainWindow):
                     QTableWidgetItem(value),
                 )
             recipe_button = QPushButton(self.tr("show_recipe"))
+            recipe_button.setEnabled(item.has_recipe)
             recipe_button.clicked.connect(
                 lambda _checked=False, item_id=item.item_id:
                 self.show_recipe_dialog(item_id)

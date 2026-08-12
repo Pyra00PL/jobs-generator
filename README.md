@@ -1,4 +1,4 @@
-# Restriction Generator 1.0.1
+# Restriction Generator 1.0.2
 
 [Polska wersja](README_PL.md)
 
@@ -17,6 +17,9 @@ requirements.
   single generated restriction
 - recipe scanning, including shaped, shapeless, smithing, tags and many custom
   result fields
+- optional detection of weapons and armor without recipes, including boss loot,
+  using item models, tags, language entries and loot tables
+- items without recipes receive no automatic Smithing requirement
 - material rules that can update hundreds of items at once
 - item and ingredient icons read from local Minecraft and mod JAR files
 - original fallback icons when local game assets are unavailable
@@ -44,7 +47,7 @@ Smith. Every generated entry remains editable.
 
 ## Windows release
 
-Download `RestrictionGenerator-1.0.1-Windows.exe` from the
+Download `RestrictionGenerator-1.0.2-Windows.exe` from the
 [Releases](../../releases) page. The executable is portable and does not
 require Python.
 

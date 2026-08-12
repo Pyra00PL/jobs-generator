@@ -36,11 +36,44 @@ class RestrictionGeneratorUiTests(unittest.TestCase):
     def test_application_uses_new_name_and_version(self) -> None:
         self.assertEqual(
             self.window.windowTitle(),
-            "Restriction Generator v1.0.1",
+            "Restriction Generator v1.0.2",
         )
         self.assertEqual(
             self.window.minecraft_profile_combo.currentData(),
             "1.21.1",
+        )
+
+    def test_non_craftable_equipment_scan_is_enabled_by_default(self) -> None:
+        self.assertTrue(self.window.include_non_craftable_equipment)
+        self.assertTrue(
+            self.window.non_craftable_equipment_checkbox.isChecked()
+        )
+
+        self.window.non_craftable_equipment_checkbox.setChecked(False)
+
+        self.assertFalse(self.window.include_non_craftable_equipment)
+
+    def test_non_craftable_item_disables_recipe_preview(self) -> None:
+        item = CraftableItem(
+            item_id="example:boss_lance",
+            material="boss",
+            category="weapon",
+            source_mod="example",
+            recipe_path="",
+            confidence="medium",
+            material_source="item name",
+            recipe_data={},
+        )
+        self.window.detected_items = [item]
+
+        self.window.refresh_detected_items_table()
+
+        self.assertEqual(
+            self.window.detected_items_table.item(0, 7).text(),
+            "Brak receptury",
+        )
+        self.assertFalse(
+            self.window.detected_items_table.cellWidget(0, 8).isEnabled()
         )
 
     def test_minecraft_version_can_be_selected_for_export(

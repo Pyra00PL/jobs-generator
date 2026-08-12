@@ -64,7 +64,7 @@ def create_rows_from_material_rules(
             item_id=item.item_id,
             use_job=job,
             use_level=level if job != "none" else 0,
-            smith_level=level,
+            smith_level=level if item.has_recipe else 0,
             use_types=use_types,
             enchant_job="enchanter",
             enchant_level=level,
